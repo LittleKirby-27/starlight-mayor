@@ -1,5 +1,5 @@
-import { useMemo, useRef } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useEffect, useMemo, useRef } from 'react';
+import { useFrame, useThree } from '@react-three/fiber';
 import { useGameStore, BuildingType } from '../../store/gameStore';
 import * as THREE from 'three';
 
@@ -41,6 +41,7 @@ const BUILDING_GEOMETRY: Record<BuildingType, { bodyHeight: number, bodyRadius?:
 };
 
 const textureCache: Record<string, { map: THREE.CanvasTexture, emissiveMap: THREE.CanvasTexture } | null> = {};
+const FACADE_TEXTURE_SIZE = 768;
 
 function stableHash(value: string) {
     return value.split('').reduce((hash, char) => ((hash * 31) + char.charCodeAt(0)) >>> 0, 2166136261);
@@ -73,37 +74,49 @@ function getBuildingTextures(type: string, bodyColor: number) {
     if (textureCache[key] !== undefined) return textureCache[key];
 
     const canvas = document.createElement('canvas');
-    canvas.width = 512; canvas.height = 512;
+    canvas.width = FACADE_TEXTURE_SIZE; canvas.height = FACADE_TEXTURE_SIZE;
     const ctx = canvas.getContext('2d')!;
     
     const eCanvas = document.createElement('canvas');
-    eCanvas.width = 512; eCanvas.height = 512;
+    eCanvas.width = FACADE_TEXTURE_SIZE; eCanvas.height = FACADE_TEXTURE_SIZE;
     const eCtx = eCanvas.getContext('2d')!;
 
     // Layered facade: soft vertical gradient, floor bands and framed windows.
-    const facadeGradient = ctx.createLinearGradient(0, 0, 512, 0);
+    const size = FACADE_TEXTURE_SIZE;
+    const scale = size / 512;
+    const facadeGradient = ctx.createLinearGradient(0, 0, size, 0);
     facadeGradient.addColorStop(0, darkenHex(bodyColor, 0.14));
     facadeGradient.addColorStop(0.48, lightenHex(bodyColor, 0.08));
     facadeGradient.addColorStop(1, darkenHex(bodyColor, 0.2));
     ctx.fillStyle = facadeGradient;
-    ctx.fillRect(0, 0, 512, 512);
+    ctx.fillRect(0, 0, size, size);
     eCtx.fillStyle = '#000000';
-    eCtx.fillRect(0, 0, 512, 512);
+    eCtx.fillRect(0, 0, size, size);
+
+    // Fine facade seams keep surfaces readable when viewed at a shallow camera angle.
+    ctx.strokeStyle = 'rgba(235, 245, 248, 0.1)';
+    ctx.lineWidth = Math.max(1, 1.25 * scale);
+    for (let x = 0; x <= size; x += 64 * scale) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, size);
+        ctx.stroke();
+    }
 
     const seed = stableHash(`${type}_${bodyColor}`);
-    const padX = 24;
-    const padY = 20;
-    const w = (512 - padX * (cols + 1)) / cols;
-    const h = (512 - padY * (rows + 1)) / rows;
+    const padX = 24 * scale;
+    const padY = 20 * scale;
+    const w = (size - padX * (cols + 1)) / cols;
+    const h = (size - padY * (rows + 1)) / rows;
 
     for (let i = 0; i < rows; i++) {
         ctx.fillStyle = 'rgba(25, 35, 45, 0.22)';
-        ctx.fillRect(0, padY + i * (h + padY) + h + 5, 512, 5);
+        ctx.fillRect(0, padY + i * (h + padY) + h + 5 * scale, size, 5 * scale);
         for (let j = 0; j < cols; j++) {
             const x = padX + j * (w + padX);
             const y = padY + i * (h + padY);
             ctx.fillStyle = '#b8cbd5';
-            ctx.fillRect(x - 4, y - 4, w + 8, h + 8);
+            ctx.fillRect(x - 4 * scale, y - 4 * scale, w + 8 * scale, h + 8 * scale);
             const windowGradient = ctx.createLinearGradient(x, y, x + w, y + h);
             windowGradient.addColorStop(0, '#183247');
             windowGradient.addColorStop(0.48, '#31566f');
@@ -112,7 +125,13 @@ function getBuildingTextures(type: string, bodyColor: number) {
             ctx.fillStyle = windowGradient;
             ctx.fillRect(x, y, w, h);
             ctx.fillStyle = 'rgba(210, 235, 245, 0.25)';
-            ctx.fillRect(x + 3, y + 3, Math.max(2, w * 0.08), h - 6);
+            ctx.fillRect(x + 3 * scale, y + 3 * scale, Math.max(2 * scale, w * 0.08), h - 6 * scale);
+            ctx.fillStyle = 'rgba(205, 228, 238, 0.38)';
+            ctx.fillRect(x + w * 0.5 - scale, y, 2 * scale, h);
+            ctx.fillStyle = 'rgba(235, 245, 248, 0.3)';
+            ctx.fillRect(x, y + h * 0.52 - scale, w, 2 * scale);
+            ctx.fillStyle = 'rgba(10, 25, 34, 0.42)';
+            ctx.fillRect(x - 5 * scale, y + h + 2 * scale, w + 10 * scale, 3 * scale);
 
             // Deterministic lighting avoids buildings changing appearance on reload.
             if (((seed + i * 17 + j * 29) % 10) >= 3) {
@@ -128,10 +147,12 @@ function getBuildingTextures(type: string, bodyColor: number) {
     const map = new THREE.CanvasTexture(canvas);
     map.minFilter = THREE.LinearMipmapLinearFilter;
     map.magFilter = THREE.LinearFilter;
+    map.generateMipmaps = true;
     map.colorSpace = THREE.SRGBColorSpace;
     const emissiveMap = new THREE.CanvasTexture(eCanvas);
     emissiveMap.minFilter = THREE.LinearMipmapLinearFilter;
     emissiveMap.magFilter = THREE.LinearFilter;
+    emissiveMap.generateMipmaps = true;
     emissiveMap.colorSpace = THREE.SRGBColorSpace;
     
     textureCache[key] = { map, emissiveMap };
@@ -176,10 +197,34 @@ function RoofEquipment({ y, wide = false }: { y: number; wide?: boolean }) {
   );
 }
 
+function CivicSiteDetails({ accent, isNight }: { accent: string; isNight: boolean }) {
+  return (
+    <group>
+      <mesh position={[0, 0.075, 0.79]} receiveShadow>
+        <boxGeometry args={[0.62, 0.05, 0.46]} />
+        <meshStandardMaterial color="#b7bdc0" roughness={0.93} />
+      </mesh>
+      {[-0.43, 0.43].map((x) => (
+        <group key={x} position={[x, 0, 0.73]}>
+          <mesh position={[0, 0.25, 0]} castShadow>
+            <cylinderGeometry args={[0.035, 0.045, 0.48, 10]} />
+            <meshStandardMaterial color="#4d5b64" metalness={0.58} roughness={0.4} />
+          </mesh>
+          <mesh position={[0, 0.51, 0]}>
+            <sphereGeometry args={[0.075, 12, 8]} />
+            <meshStandardMaterial color="#fff0b5" emissive={isNight ? accent : '#000000'} emissiveIntensity={isNight ? 1.25 : 0} toneMapped={false} />
+          </mesh>
+        </group>
+      ))}
+    </group>
+  );
+}
+
 export function Building({ type, position }: { type: BuildingType, position: [number, number, number] }) {
   const isNight = useGameStore(state => state.isNight);
   const colors = BUILDING_COLORS[type];
   const geo = BUILDING_GEOMETRY[type];
+  const gl = useThree((state) => state.gl);
   
   const windBladeRef = useRef<THREE.Group>(null);
   const rotationY = useMemo(() => {
@@ -194,6 +239,15 @@ export function Building({ type, position }: { type: BuildingType, position: [nu
   });
 
   const tex = useMemo(() => getBuildingTextures(type, colors.body), [type, colors.body]);
+
+  useEffect(() => {
+      if (!tex) return;
+      const anisotropy = Math.min(8, gl.capabilities.getMaxAnisotropy());
+      tex.map.anisotropy = anisotropy;
+      tex.emissiveMap.anisotropy = anisotropy;
+      tex.map.needsUpdate = true;
+      tex.emissiveMap.needsUpdate = true;
+  }, [gl, tex]);
   
   const emissiveColor = isNight && (!tex) && (type === 'commercial' || type === 'residential' || type === 'industrial' || type === 'luxury_residential' || type === 'skyscraper' || type === 'hospital' || type === 'police' || type === 'fire_station' || type === 'library' || type === 'stadium' || type === 'school') 
       ? new THREE.Color(colors.body).multiplyScalar(0.5) 
@@ -218,6 +272,9 @@ export function Building({ type, position }: { type: BuildingType, position: [nu
           <boxGeometry args={[1.55, 0.12, 1.55]} />
           <meshStandardMaterial color="#87909a" roughness={0.94} />
         </mesh>
+      )}
+      {(['commercial', 'school', 'hospital', 'police', 'fire_station', 'library'] as BuildingType[]).includes(type) && (
+        <CivicSiteDetails accent={`#${colors.roof.toString(16).padStart(6, '0')}`} isNight={isNight} />
       )}
       {/* Main Body */}
       {type === 'wind' ? (

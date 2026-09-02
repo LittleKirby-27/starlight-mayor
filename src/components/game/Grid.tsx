@@ -260,6 +260,8 @@ export function Grid({ onPlaceBuilding, selectedBuilding }: { onPlaceBuilding: (
   const buildings = useGameStore((state) => state.buildings);
   const [hoverPos, setHoverPos] = useState<[number, number, number] | null>(null);
   const [canPlace, setCanPlace] = useState(false);
+  const touchStart = useRef<{ pointerId: number; clientX: number; clientY: number } | null>(null);
+  const suppressClickUntil = useRef(0);
 
   const evaluatePosition = (x: number, z: number) => {
     const withinBounds = Math.abs(x) <= GRID_SIZE / 2 - 2 && Math.abs(z) <= GRID_SIZE / 2 - 2;
@@ -279,7 +281,39 @@ export function Grid({ onPlaceBuilding, selectedBuilding }: { onPlaceBuilding: (
     setCanPlace(evaluatePosition(x, z));
   };
 
+  const snapPosition = (point: THREE.Vector3) => {
+    const x = Math.round(point.x / 2) * 2;
+    const z = Math.round(point.z / 2) * 2;
+    return { x, z, valid: evaluatePosition(x, z) };
+  };
+
+  const handlePointerDown = (event: ThreeEvent<PointerEvent>) => {
+    if (!selectedBuilding || event.pointerType === 'mouse') return;
+    const position = snapPosition(event.point);
+    setHoverPos([position.x, 0.08, position.z]);
+    setCanPlace(position.valid);
+    touchStart.current = {
+      pointerId: event.pointerId,
+      clientX: event.clientX,
+      clientY: event.clientY,
+    };
+  };
+
+  const handlePointerUp = (event: ThreeEvent<PointerEvent>) => {
+    const start = touchStart.current;
+    touchStart.current = null;
+    if (!selectedBuilding || !start || start.pointerId !== event.pointerId) return;
+    const travel = Math.hypot(event.clientX - start.clientX, event.clientY - start.clientY);
+    if (travel > 12) return;
+    const position = snapPosition(event.point);
+    if (!position.valid) return;
+    event.stopPropagation();
+    suppressClickUntil.current = performance.now() + 600;
+    onPlaceBuilding(position.x, position.z);
+  };
+
   const handleClick = (event: ThreeEvent<MouseEvent>) => {
+    if (performance.now() < suppressClickUntil.current) return;
     if (!selectedBuilding || !hoverPos || !canPlace) return;
     event.stopPropagation();
     onPlaceBuilding(hoverPos[0], hoverPos[2]);
@@ -296,6 +330,9 @@ export function Grid({ onPlaceBuilding, selectedBuilding }: { onPlaceBuilding: (
         position={[0, 0, 0]}
         receiveShadow
         onPointerMove={handlePointerMove}
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={() => { touchStart.current = null; }}
         onPointerOut={() => setHoverPos(null)}
         onClick={handleClick}
       >

@@ -113,6 +113,14 @@ assert.deepEqual(
 );
 assert.equal(resolveLevelProgress(6, [1, 2, 3, 4, 5], 6).isFinal, true, '第六关完成后必须进入最终胜利');
 assert.equal(getNextLevelTransition(6, 1000), null, '最终关后不能创建不存在的第七关');
+assert.deepEqual(
+  ['park', 'school', 'subway', 'wind', 'solar', 'hospital', 'police', 'fire_station', 'library'].map((type) => {
+    const config = BUILDING_CONFIG[type as BuildingType];
+    return config.income - config.upkeep;
+  }),
+  [-5, -8, -10, -4, -4, -13, -9, -9, -7],
+  '公共与环保建筑必须采用提高后的负收入维护值',
+);
 
 const initialBuildings: BuildingType[] = ['skyscraper', 'commercial', 'commercial', 'residential', 'residential', 'park', 'park', 'school', 'hospital'];
 const startingResources = (level: number): RuleSnapshot => ({
@@ -160,4 +168,4 @@ feasibleStrategies.forEach(({ level, buildings, policies }) => {
   assert.ok(state.money > 0 && isLevelComplete(state), `第 ${level} 关必须存在无需等待收入且财政为正的通关策略`);
 });
 
-console.log('gameRules: 20 checks passed');
+console.log('gameRules: 21 checks passed');

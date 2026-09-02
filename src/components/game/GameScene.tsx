@@ -1,12 +1,13 @@
-import { Suspense } from 'react';
+import { Suspense, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { AdaptiveDpr, OrbitControls, PerformanceMonitor } from '@react-three/drei';
+import { AdaptiveDpr, PerformanceMonitor } from '@react-three/drei';
 import { Bloom, EffectComposer, Vignette } from '@react-three/postprocessing';
 import * as THREE from 'three';
 import { useGameStore, BuildingType } from '../../store/gameStore';
 import { Building } from './Building';
 import { Grid } from './Grid';
 import { Environment } from './Environment';
+import { CameraRig, MobileJoystick, type JoystickAxis } from './CameraControls';
 
 interface GameSceneProps {
     selectedBuilding: BuildingType | null;
@@ -18,6 +19,7 @@ export function GameScene({ selectedBuilding, onBuildingPlaced }: GameSceneProps
     const addBuilding = useGameStore(state => state.addBuilding);
     const graphicsQuality = useGameStore(state => state.graphicsQuality);
     const setGraphicsQuality = useGameStore(state => state.setGraphicsQuality);
+    const joystick = useRef<JoystickAxis>({ x: 0, y: 0 });
 
     const handlePlaceBuilding = (x: number, z: number) => {
         if (selectedBuilding) {
@@ -50,20 +52,7 @@ export function GameScene({ selectedBuilding, onBuildingPlaced }: GameSceneProps
                         <Building key={b.id} type={b.type} position={[b.x, 0, b.z]} />
                     ))}
                     
-                    <OrbitControls 
-                        makeDefault
-                        regress
-                        target={[0, 1.5, 0]}
-                        enablePan={true}
-                        enableZoom={true}
-                        enableRotate={true}
-                        enableDamping
-                        dampingFactor={0.07}
-                        maxPolarAngle={Math.PI / 2.16}
-                        minPolarAngle={Math.PI / 7}
-                        minDistance={10}
-                        maxDistance={74}
-                    />
+                    <CameraRig joystick={joystick} />
                     <AdaptiveDpr pixelated />
                     <PerformanceMonitor
                         flipflops={3}
@@ -79,6 +68,8 @@ export function GameScene({ selectedBuilding, onBuildingPlaced }: GameSceneProps
                     )}
                 </Suspense>
             </Canvas>
+            <MobileJoystick axis={joystick} />
+            <div className="camera-help" aria-hidden="true">WASD 移动 · Q/E 升降 · 鼠标旋转</div>
         </div>
     );
 }

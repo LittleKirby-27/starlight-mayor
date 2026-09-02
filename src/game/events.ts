@@ -1,7 +1,7 @@
-export const FIRST_EVENT_DAY = 3;
-export const EVENT_MIN_GAP_DAYS = 3;
-export const EVENT_WINDOW_DAYS = 7;
-export const EVENT_MAX_PER_WINDOW = 2;
+export const FIRST_EVENT_DAY = 2;
+export const EVENT_MIN_GAP_DAYS = 2;
+export const EVENT_WINDOW_DAYS = 6;
+export const EVENT_MAX_PER_WINDOW = 3;
 
 export interface EventScheduleSnapshot {
   day: number;
@@ -11,7 +11,7 @@ export interface EventScheduleSnapshot {
 }
 
 export const getEventChance = (currentLevel: number) =>
-  Math.min(0.33, 0.16 + Math.max(1, currentLevel) * 0.025);
+  Math.min(0.68, 0.5 + Math.max(1, currentLevel) * 0.03);
 
 export function shouldTriggerEvent({ day, currentLevel, eventDays, randomRoll }: EventScheduleSnapshot): boolean {
   if (day < FIRST_EVENT_DAY) return false;
