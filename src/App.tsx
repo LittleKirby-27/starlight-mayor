@@ -5,6 +5,7 @@ import { AchievementsUI } from './components/ui/AchievementsUI';
 import { AIAssistant } from './components/ui/AIAssistant';
 import { AudioDirector } from './components/ui/AudioDirector';
 import { AudioSettings } from './components/ui/AudioSettings';
+import { ChallengePicker } from './components/ui/ChallengePicker';
 import { EventModal } from './components/ui/EventModal';
 import { GameOverScreen } from './components/ui/GameOverScreen';
 import { LeftPanel } from './components/ui/LeftPanel';
@@ -24,6 +25,7 @@ const App = () => {
   const [showAchievements, setShowAchievements] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
   const [showAudioSettings, setShowAudioSettings] = useState(false);
+  const [sideMenuCollapsed, setSideMenuCollapsed] = useState(false);
   const recordedResults = useRef(new Set<string>());
   const audioWasPaused = useRef(false);
   const achievementsWerePaused = useRef(false);
@@ -96,7 +98,7 @@ const App = () => {
   };
 
   return (
-    <div className={`relative h-screen w-screen overflow-hidden bg-[#07101c] font-sans ${screen === 'playing' && state.timeLeft <= 60 && !state.isGameOver ? 'critical-time-frame' : ''}`}>
+    <div className={`relative h-screen w-screen overflow-hidden bg-[#07101c] font-sans ${sideMenuCollapsed ? 'mobile-menu-collapsed' : ''} ${screen === 'playing' && state.timeLeft <= 60 && !state.isGameOver ? 'critical-time-frame' : ''}`}>
       <AudioDirector />
 
       {screen === 'menu' && (
@@ -114,12 +116,18 @@ const App = () => {
           </Suspense>
           <TopBar onOpenAchievements={openAchievements} onOpenAudioSettings={openAudioSettings} />
           <LeftPanel />
-          <SideMenu selectedBuilding={selectedBuilding} onSelectBuilding={setSelectedBuilding} />
+          <SideMenu
+            selectedBuilding={selectedBuilding}
+            onSelectBuilding={setSelectedBuilding}
+            collapsed={sideMenuCollapsed}
+            onToggleCollapsed={() => setSideMenuCollapsed((value) => !value)}
+          />
           <EventModal />
+          <ChallengePicker />
           <AIAssistant />
           <AchievementToast />
 
-          {state.isPaused && !state.isGameOver && !state.levelComplete && (
+          {state.isPaused && state.activeChallengeId && !state.isGameOver && !state.levelComplete && (
             <button className="pause-chip" onClick={() => state.setPaused(false)}>
               <Pause size={16} />
               游戏已暂停

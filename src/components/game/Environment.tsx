@@ -198,6 +198,7 @@ function CelestialBodies({ progress }: { progress: MutableRefObject<number> }) {
 
 export function Environment() {
   const isNight = useGameStore((state) => state.isNight);
+  const lightPollution = useGameStore((state) => state.lightPollution);
   const weather = useGameStore((state) => state.weather);
   const ambientRef = useRef<THREE.HemisphereLight>(null);
   const sunRef = useRef<THREE.DirectionalLight>(null);
@@ -219,7 +220,8 @@ export function Environment() {
     if (progress < 0.5) palette.current.lerpColors(dayBase, palette.dusk, progress * 2);
     else palette.current.lerpColors(palette.dusk, palette.night, (progress - 0.5) * 2);
     state.scene.background = palette.current;
-    state.scene.fog = new THREE.FogExp2(palette.current.getHex(), weather === 'foggy' ? 0.055 : weather === 'rainy' ? 0.028 : weather === 'cloudy' ? 0.02 : 0.012);
+    const skyGlowFog = isNight ? (lightPollution / 100) * 0.012 : 0;
+    state.scene.fog = new THREE.FogExp2(palette.current.getHex(), (weather === 'foggy' ? 0.055 : weather === 'rainy' ? 0.028 : weather === 'cloudy' ? 0.02 : 0.012) + skyGlowFog);
 
     if (ambientRef.current) {
       ambientRef.current.intensity = THREE.MathUtils.lerp(weather === 'sunny' ? 0.9 : 0.58, 0.28, progress);
@@ -252,7 +254,7 @@ export function Environment() {
         shadow-camera-far={90}
         shadow-bias={-0.0003}
       />
-      {isNight && <pointLight position={[0, 8, 0]} intensity={18} color="#4f7cff" distance={38} decay={2} />}
+      {isNight && <pointLight position={[0, 8, 0]} intensity={6 + lightPollution * 0.28} color={lightPollution > 55 ? '#ff9b62' : '#4f7cff'} distance={42} decay={2} />}
       <CelestialBodies progress={progressRef} />
       <StarField />
       <RainParticles />

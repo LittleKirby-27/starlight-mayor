@@ -2,6 +2,14 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { DEFAULT_AUDIO_THEME, isAudioThemeId, type AudioThemeId } from '../audio/audioThemes.ts';
 import {
+  calculateLightPollution,
+  getBuildingSpamMultiplier,
+  getResidentialExposures,
+  RETROFIT_CONFIG,
+  starsFromLightPollution,
+  type RetrofitType,
+} from '../game/lighting.ts';
+import {
   BUILDING_CONFIG,
   getNextLevelTransition,
   getLevelTime,
@@ -14,8 +22,10 @@ import {
   type WeatherType,
 } from '../game/rules.ts';
 
-export { BUILDING_CONFIG, getLevelObjectives, LEVELS, POLICY_CONFIG, TURN_DURATION_MS } from '../game/rules.ts';
-export type { AchievementCategory, BuildingType, LevelConfig, ObjectiveProgress, WeatherType } from '../game/rules.ts';
+export { BUILDING_CONFIG, getChallengeOptions, getLevelObjectives, LEVELS, POLICY_CONFIG, TURN_DURATION_MS } from '../game/rules.ts';
+export { getBuildingLightingStats, getBuildingSpamMultiplier, LIGHTING_PROFILES, RETROFIT_CONFIG } from '../game/lighting.ts';
+export type { AchievementCategory, BuildingType, ChallengeOption, LevelConfig, ObjectiveProgress, WeatherType } from '../game/rules.ts';
+export type { CitizenFeedbackCandidate, RetrofitType } from '../game/lighting.ts';
 export type { AudioThemeId } from '../audio/audioThemes.ts';
 
 export interface Achievement {
@@ -35,6 +45,16 @@ export interface Building {
   type: BuildingType;
   x: number;
   z: number;
+  retrofits: RetrofitType[];
+  upkeepMultiplier: number;
+}
+
+export interface CitizenFeedbackEntry {
+  id: string;
+  text: string;
+  reason: string;
+  tone: 'complaint' | 'praise' | 'observation';
+  day: number;
 }
 
 export interface GameState {
@@ -62,13 +82,29 @@ export interface GameState {
   isNight: boolean;
   weather: WeatherType;
   eventDays: number[];
-  addBuilding: (building: Omit<Building, 'id'>) => boolean;
+  lightPollution: number;
+  eventLightModifier: number;
+  residentialComplaints: number;
+  auditedBuildingIds: string[];
+  activeChallengeId: string | null;
+  auditMode: boolean;
+  selectedCityBuildingId: string | null;
+  recentBuildType: BuildingType | null;
+  consecutiveBuildCount: number;
+  citizenFeedbackLog: CitizenFeedbackEntry[];
+  addBuilding: (building: Omit<Building, 'id' | 'retrofits' | 'upkeepMultiplier'>) => boolean;
   activatePolicy: (policyId: string) => boolean;
+  applyLightingRetrofit: (buildingId: string, retrofit: RetrofitType) => boolean;
+  auditBuilding: (buildingId: string) => void;
+  setAuditMode: (enabled: boolean) => void;
+  selectCityBuilding: (buildingId: string | null) => void;
+  selectChallenge: (challengeId: string) => void;
+  recordCitizenFeedback: (entry: Omit<CitizenFeedbackEntry, 'day'>) => void;
   nextTurn: () => void;
   resetGame: () => void;
   retryCurrentLevel: () => void;
   continueToNextLevel: () => void;
-  applyEventResult: (effect: { money?: number; environment?: number; stars?: number; satisfaction?: number }) => void;
+  applyEventResult: (effect: { money?: number; environment?: number; stars?: number; lightPollution?: number; satisfaction?: number }) => void;
   setCurrentLevel: (level: number) => void;
   checkWinLoss: () => void;
   addEventDay: (day: number) => void;
@@ -98,19 +134,19 @@ const ACHIEVEMENTS: Achievement[] = [
 ];
 
 const initialBuildings: Building[] = [
-  { id: 'init_1', type: 'skyscraper', x: 0, z: 0 },
-  { id: 'init_2', type: 'commercial', x: 4, z: 0 },
-  { id: 'init_3', type: 'commercial', x: -4, z: 0 },
-  { id: 'init_4', type: 'residential', x: 0, z: 4 },
-  { id: 'init_5', type: 'residential', x: 0, z: -4 },
-  { id: 'init_6', type: 'park', x: -4, z: -4 },
-  { id: 'init_7', type: 'park', x: 4, z: 4 },
-  { id: 'init_8', type: 'school', x: -8, z: 4 },
-  { id: 'init_9', type: 'hospital', x: 8, z: -4 },
+  { id: 'init_1', type: 'skyscraper', x: 0, z: 0, retrofits: [], upkeepMultiplier: 1 },
+  { id: 'init_2', type: 'commercial', x: 4, z: 0, retrofits: [], upkeepMultiplier: 1 },
+  { id: 'init_3', type: 'commercial', x: -4, z: 0, retrofits: [], upkeepMultiplier: 1 },
+  { id: 'init_4', type: 'residential', x: 0, z: 4, retrofits: [], upkeepMultiplier: 1 },
+  { id: 'init_5', type: 'residential', x: 0, z: -4, retrofits: [], upkeepMultiplier: 1 },
+  { id: 'init_6', type: 'park', x: -4, z: -4, retrofits: [], upkeepMultiplier: 1 },
+  { id: 'init_7', type: 'park', x: 4, z: 4, retrofits: [], upkeepMultiplier: 1 },
+  { id: 'init_8', type: 'school', x: -8, z: 4, retrofits: [], upkeepMultiplier: 1 },
+  { id: 'init_9', type: 'hospital', x: 8, z: -4, retrofits: [], upkeepMultiplier: 1 },
 ];
 
 const cloneAchievements = (source = ACHIEVEMENTS) => source.map((achievement) => ({ ...achievement }));
-const cloneBuildings = () => initialBuildings.map((building) => ({ ...building }));
+const cloneBuildings = () => initialBuildings.map((building) => ({ ...building, retrofits: [...building.retrofits] }));
 const clampIndex = (value: number) => Math.max(0, Math.min(100, Math.round(value)));
 const emit = (name: string, detail?: unknown) => {
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(name, { detail }));
@@ -123,26 +159,47 @@ const nextWeather = (day: number, stars: number): WeatherType => {
   return 'sunny';
 };
 
-const startingState = (level: number) => ({
-  money: 1000 + (level - 1) * 450,
-  environment: Math.min(72, 52 + (level - 1) * 4),
-  stars: Math.min(78, 18 + (level - 1) * 12),
-  satisfaction: Math.min(75, 60 + (level - 1) * 3),
-  currentLevel: level,
-  isGameOver: false,
-  gameResult: null as 'win' | 'lose' | null,
-  failReason: null as string | null,
-  levelComplete: null as number | null,
-  isPaused: false,
-  timeLeft: getLevelTime(level),
-  levelStartedAt: Date.now(),
-  buildings: cloneBuildings(),
-  activePolicies: [] as string[],
-  day: 1,
-  isNight: false,
-  weather: 'sunny' as WeatherType,
-  eventDays: [] as number[],
-});
+const getLightingMetrics = (state: Pick<GameState, 'buildings' | 'currentLevel' | 'activePolicies' | 'eventLightModifier'>) => {
+  const policyReduction = state.activePolicies.reduce((sum, policyId) => sum + (POLICY_CONFIG[policyId]?.lightReduction ?? 0), 0);
+  const lightPollution = calculateLightPollution(state.buildings, state.currentLevel, policyReduction, state.eventLightModifier);
+  return {
+    lightPollution,
+    stars: starsFromLightPollution(lightPollution),
+    residentialComplaints: getResidentialExposures(state.buildings).length,
+  };
+};
+
+const startingState = (level: number) => {
+  const buildings = cloneBuildings();
+  const base = {
+    money: 1000 + (level - 1) * 450,
+    environment: Math.min(72, 52 + (level - 1) * 4),
+    satisfaction: Math.min(75, 60 + (level - 1) * 3),
+    currentLevel: level,
+    isGameOver: false,
+    gameResult: null as 'win' | 'lose' | null,
+    failReason: null as string | null,
+    levelComplete: null as number | null,
+    isPaused: true,
+    timeLeft: getLevelTime(level),
+    levelStartedAt: Date.now(),
+    buildings,
+    activePolicies: [] as string[],
+    day: 1,
+    isNight: false,
+    weather: 'sunny' as WeatherType,
+    eventDays: [] as number[],
+    eventLightModifier: 0,
+    auditedBuildingIds: [] as string[],
+    activeChallengeId: null as string | null,
+    auditMode: false,
+    selectedCityBuildingId: null as string | null,
+    recentBuildType: null as BuildingType | null,
+    consecutiveBuildCount: 0,
+    citizenFeedbackLog: [] as CitizenFeedbackEntry[],
+  };
+  return { ...base, ...getLightingMetrics(base) };
+};
 
 const INITIAL_META = {
   maxUnlockedLevel: 1,
@@ -163,21 +220,30 @@ export const useGameStore = create<GameState>()(
       addBuilding: (building) => {
         const state = get();
         const config = BUILDING_CONFIG[building.type];
-        if (state.isPaused || state.isGameOver || state.money < config.cost) return false;
+        const costMultiplier = getBuildingSpamMultiplier(building.type, state.recentBuildType, state.consecutiveBuildCount);
+        const actualCost = Math.ceil(config.cost * costMultiplier);
+        if (state.isPaused || state.isGameOver || state.money < actualCost) return false;
         if (state.buildings.some((item) => Math.hypot(item.x - building.x, item.z - building.z) < 1.8)) return false;
 
         set((current) => ({
-          money: current.money - config.cost,
+          money: current.money - actualCost,
           environment: clampIndex(current.environment + config.env),
-          stars: clampIndex(current.stars + config.stars),
           satisfaction: clampIndex(current.satisfaction + config.sat),
-          buildings: [...current.buildings, { ...building, id: crypto.randomUUID() }],
+          buildings: [...current.buildings, {
+            ...building,
+            id: crypto.randomUUID(),
+            retrofits: [],
+            upkeepMultiplier: Math.round((1 + (costMultiplier - 1) * 0.7) * 100) / 100,
+          }],
+          recentBuildType: building.type,
+          consecutiveBuildCount: current.recentBuildType === building.type ? current.consecutiveBuildCount + 1 : 1,
         }));
+        set(getLightingMetrics(get()));
 
         get().updateAchievementProgress('build_10', 1);
         if (building.type === 'park') get().updateAchievementProgress('park_5', 1);
         if (building.type === 'wind' || building.type === 'solar') get().updateAchievementProgress('clean_energy_7', 1);
-        emit('game-action', { type: 'build' });
+        emit('game-action', { type: 'build', antiSpam: costMultiplier > 1, cost: actualCost });
         get().checkWinLoss();
         return true;
       },
@@ -190,10 +256,10 @@ export const useGameStore = create<GameState>()(
         set((current) => ({
           money: current.money - config.cost,
           environment: clampIndex(current.environment + config.env),
-          stars: clampIndex(current.stars + config.stars),
           satisfaction: clampIndex(current.satisfaction + config.sat),
           activePolicies: [...current.activePolicies, policyId],
         }));
+        set(getLightingMetrics(get()));
 
         get().updateAchievementProgress('policy_5', 1);
         emit('game-action', { type: 'policy' });
@@ -201,13 +267,60 @@ export const useGameStore = create<GameState>()(
         return true;
       },
 
+      applyLightingRetrofit: (buildingId, retrofit) => {
+        const state = get();
+        const building = state.buildings.find((item) => item.id === buildingId);
+        const config = RETROFIT_CONFIG[retrofit];
+        if (!building || !config || state.isPaused || state.isGameOver || state.money < config.cost) return false;
+        if (!state.auditedBuildingIds.includes(buildingId) || building.retrofits.includes(retrofit)) return false;
+        set((current) => ({
+          money: current.money - config.cost,
+          satisfaction: retrofit === 'smart_dimming' ? clampIndex(current.satisfaction + 1) : current.satisfaction,
+          buildings: current.buildings.map((item) => item.id === buildingId
+            ? { ...item, retrofits: [...item.retrofits, retrofit] }
+            : item),
+        }));
+        set(getLightingMetrics(get()));
+        emit('game-action', { type: 'retrofit', retrofit, buildingId });
+        get().checkWinLoss();
+        return true;
+      },
+
+      auditBuilding: (buildingId) => {
+        const state = get();
+        if (!state.buildings.some((building) => building.id === buildingId) || state.isGameOver) return;
+        set((current) => ({
+          selectedCityBuildingId: buildingId,
+          auditedBuildingIds: current.auditedBuildingIds.includes(buildingId)
+            ? current.auditedBuildingIds
+            : [...current.auditedBuildingIds, buildingId],
+        }));
+        emit('game-action', { type: 'audit', buildingId });
+        get().checkWinLoss();
+      },
+
+      setAuditMode: (auditMode) => set({ auditMode, selectedCityBuildingId: auditMode ? get().selectedCityBuildingId : null }),
+      selectCityBuilding: (selectedCityBuildingId) => set({ selectedCityBuildingId }),
+      selectChallenge: (activeChallengeId) => {
+        if (!['night_audit', 'precision_budget', 'resident_night'].includes(activeChallengeId)) return;
+        set({ activeChallengeId, isPaused: false, levelStartedAt: Date.now() });
+        emit('game-challenge-selected', { level: get().currentLevel, challengeId: activeChallengeId });
+      },
+      recordCitizenFeedback: (entry) => set((current) => ({
+        citizenFeedbackLog: [
+          { ...entry, day: current.day },
+          ...current.citizenFeedbackLog.filter((item) => item.id !== entry.id),
+        ].slice(0, 8),
+      })),
+
       applyEventResult: (effect) => {
         set((current) => ({
           money: current.money + (effect.money ?? 0),
           environment: clampIndex(current.environment + (effect.environment ?? 0)),
-          stars: clampIndex(current.stars + (effect.stars ?? 0)),
+          eventLightModifier: current.eventLightModifier + (effect.lightPollution ?? -(effect.stars ?? 0)),
           satisfaction: clampIndex(current.satisfaction + (effect.satisfaction ?? 0)),
         }));
+        set(getLightingMetrics(get()));
         emit('game-action', { type: 'event' });
         get().checkWinLoss();
       },
@@ -218,15 +331,15 @@ export const useGameStore = create<GameState>()(
 
         let turnIncome = 0;
         let environmentDrift = -Math.floor(state.currentLevel / 3);
-        let starsDrift = state.isNight ? 1 : 0;
+        const complaintCount = getResidentialExposures(state.buildings).length;
+        const satisfactionDrift = complaintCount === 0 ? 1 : -Math.min(4, Math.ceil(complaintCount / 2));
 
         state.buildings.forEach((building) => {
           const config = BUILDING_CONFIG[building.type];
-          let income = config.income - config.upkeep;
+          let income = config.income - Math.ceil(config.upkeep * (building.upkeepMultiplier ?? 1));
           if (building.type === 'industrial') {
             const regulated = state.activePolicies.includes('limit_industry');
             environmentDrift -= regulated ? 1 : 3;
-            starsDrift -= regulated ? 1 : 2;
             if (regulated) income = Math.floor(income * 0.65);
           }
           if (building.type === 'commercial' && state.activePolicies.includes('limit_lights')) income = Math.floor(income * 0.85);
@@ -239,9 +352,6 @@ export const useGameStore = create<GameState>()(
         });
         if (state.activePolicies.includes('green_travel')) environmentDrift += 2;
         if (state.activePolicies.includes('recycle')) environmentDrift += 2;
-        if (state.activePolicies.includes('led_lights')) starsDrift += 1;
-        if (state.activePolicies.includes('limit_lights')) starsDrift += state.isNight ? 3 : 1;
-        if (state.activePolicies.includes('lights_out_hour')) starsDrift += state.isNight ? 4 : 1;
         if (state.activePolicies.includes('carbon_budget')) environmentDrift += 2;
 
         set((current) => ({
@@ -250,8 +360,10 @@ export const useGameStore = create<GameState>()(
           weather: nextWeather(current.day + 1, current.stars),
           money: current.money + turnIncome,
           environment: clampIndex(current.environment + environmentDrift),
-          stars: clampIndex(current.stars + starsDrift),
+          satisfaction: clampIndex(current.satisfaction + satisfactionDrift),
+          eventLightModifier: current.eventLightModifier === 0 ? 0 : current.eventLightModifier - Math.sign(current.eventLightModifier),
         }));
+        set(getLightingMetrics(get()));
         get().checkWinLoss();
       },
 
@@ -265,12 +377,12 @@ export const useGameStore = create<GameState>()(
         };
 
         if (state.environment <= 0) return lose('环境指数归零，城市陷入严重污染。');
-        if (state.stars <= 0) return lose('星空指数归零，光污染吞没了夜空。');
+        if (state.lightPollution >= 100) return lose('光污染达到极限，整片夜空被城市辉光吞没。');
         if (state.satisfaction <= 0) return lose('居民满意度归零，市民不再支持你的治理方案。');
         if (state.money <= 0) return lose('财政归零，城市建设被迫停摆。');
         if (state.timeLeft <= 0) return lose('超出时间限制，当前关卡目标没有完成。');
 
-        if (!isLevelComplete(state)) {
+        if (!state.activeChallengeId || !isLevelComplete(state)) {
           if (state.money >= 3000) get().updateAchievementProgress('money_3000', state.money);
           if (state.stars >= 100) get().updateAchievementProgress('stars_100', state.stars);
           if (state.money >= 900 && state.environment >= 90 && state.stars >= 90 && state.satisfaction >= 90) get().unlockAchievement('all_90');
@@ -301,10 +413,17 @@ export const useGameStore = create<GameState>()(
           timeLeft: transition.timeLeft,
           levelStartedAt: Date.now(),
           levelComplete: null,
-          isPaused: false,
+          isPaused: true,
           eventDays: [],
           money: transition.money,
+          eventLightModifier: 0,
+          activeChallengeId: null,
+          auditMode: false,
+          selectedCityBuildingId: null,
+          recentBuildType: null,
+          consecutiveBuildCount: 0,
         });
+        set(getLightingMetrics(get()));
         emit('game-level-start', { level: transition.currentLevel });
       },
 
@@ -373,6 +492,7 @@ export const useGameStore = create<GameState>()(
       setPaused: (paused) => {
         const state = get();
         if (state.isGameOver || state.levelComplete) return;
+        if (!paused && !state.activeChallengeId) return;
         set({ isPaused: paused });
       },
       addEventDay: (day) => set((state) => ({ eventDays: [...state.eventDays, day] })),
@@ -394,23 +514,40 @@ export const useGameStore = create<GameState>()(
     }),
     {
       name: 'starlight-mayor-storage',
-      version: 4,
+      version: 5,
       migrate: (persisted) => {
         const previous = (persisted ?? {}) as Partial<GameState>;
-        return {
+        const currentLevel = previous.currentLevel ?? 1;
+        const normalizedBuildings = (previous.buildings?.length ? previous.buildings : cloneBuildings()).map((building) => ({
+          ...building,
+          retrofits: Array.isArray(building.retrofits) ? building.retrofits : [],
+          upkeepMultiplier: building.upkeepMultiplier ?? 1,
+        }));
+        const migrated = {
           ...INITIAL_STATE,
           ...previous,
+          currentLevel,
+          buildings: normalizedBuildings,
           levelComplete: null,
-          isPaused: false,
+          isPaused: true,
           isGameOver: false,
           gameResult: null,
           failReason: null,
-          timeLeft: previous.timeLeft && previous.timeLeft > 0 ? previous.timeLeft : getLevelTime(previous.currentLevel ?? 1),
+          timeLeft: previous.timeLeft && previous.timeLeft > 0 ? previous.timeLeft : getLevelTime(currentLevel),
           maxUnlockedLevel: previous.maxUnlockedLevel ?? 1,
           completedLevels: previous.completedLevels ?? [],
           achievements: previous.achievements?.length ? previous.achievements : cloneAchievements(),
           audioTheme: isAudioThemeId(previous.audioTheme) ? previous.audioTheme : DEFAULT_AUDIO_THEME,
+          eventLightModifier: 0,
+          auditedBuildingIds: [],
+          activeChallengeId: null,
+          auditMode: false,
+          selectedCityBuildingId: null,
+          recentBuildType: null,
+          consecutiveBuildCount: 0,
+          citizenFeedbackLog: [],
         };
+        return { ...migrated, ...getLightingMetrics(migrated) };
       },
     },
   ),

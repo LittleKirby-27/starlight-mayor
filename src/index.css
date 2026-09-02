@@ -208,6 +208,49 @@
   touch-action: pan-x;
 }
 
+.mobile-menu-handle {
+  display: none;
+}
+
+.citizen-bubble {
+  display: grid;
+  min-width: 2.3rem;
+  min-height: 2.3rem;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.38);
+  border-radius: 999px;
+  background: rgba(7, 18, 31, 0.92);
+  color: white;
+  padding: 0.45rem;
+  font-size: 1rem;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(10px);
+  transform-origin: bottom center;
+  animation: bubble-float 2s ease-in-out infinite;
+}
+
+.citizen-bubble.complaint { border-color: rgba(252, 165, 165, 0.72); }
+.citizen-bubble.praise { border-color: rgba(110, 231, 183, 0.72); }
+.citizen-bubble.observation { border-color: rgba(103, 232, 249, 0.72); }
+
+.citizen-bubble.expanded {
+  display: flex;
+  width: min(15rem, 68vw);
+  flex-direction: column;
+  align-items: flex-start;
+  border-radius: 0.9rem;
+  padding: 0.7rem 0.8rem;
+  text-align: left;
+  animation: none;
+}
+
+.citizen-bubble.expanded span { font-size: 0.72rem; line-height: 1.45; }
+.citizen-bubble.expanded small { margin-top: 0.32rem; color: #7dd3fc; font-size: 0.58rem; line-height: 1.35; }
+
+@keyframes bubble-float {
+  50% { transform: translateY(-0.22rem); }
+}
+
 .camera-joystick-shell {
   display: none;
   position: absolute;
@@ -330,6 +373,27 @@
     max-height: 42vh;
   }
 
+  .mobile-menu-handle {
+    display: flex;
+    min-height: 2.65rem;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 0.65rem 1rem;
+    color: #cffafe;
+    font-size: 0.72rem;
+    font-weight: 800;
+  }
+
+  .game-side-menu.is-collapsed {
+    max-height: 2.75rem;
+  }
+
+  .game-side-menu.is-collapsed .side-menu-tabs,
+  .game-side-menu.is-collapsed .side-menu-content {
+    display: none;
+  }
+
   .game-assistant-button {
     left: 0.8rem;
     bottom: calc(42vh + 1.4rem);
@@ -345,6 +409,24 @@
 
   .camera-joystick-shell {
     display: flex;
+  }
+
+  .mobile-menu-collapsed .camera-joystick-shell {
+    bottom: 5rem;
+  }
+
+  .mobile-menu-collapsed .game-assistant-button {
+    bottom: 4.8rem;
+  }
+
+  .mobile-menu-collapsed .game-assistant-panel {
+    bottom: 4.8rem;
+    height: min(62vh, 30rem);
+  }
+
+  .challenge-picker {
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
   }
 
   .camera-help { display: none; }

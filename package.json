@@ -9,7 +9,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.app.json --noEmit",
-    "test:rules": "node --experimental-strip-types tests/gameRules.test.ts && node --experimental-strip-types tests/gameStore.test.ts && node --experimental-strip-types tests/eventRules.test.ts && node --experimental-strip-types tests/audioThemes.test.ts",
+    "test:rules": "node --experimental-strip-types tests/lightingRules.test.ts && node --experimental-strip-types tests/gameRules.test.ts && node --experimental-strip-types tests/gameStore.test.ts && node --experimental-strip-types tests/eventRules.test.ts && node --experimental-strip-types tests/audioThemes.test.ts",
     "check": "pnpm typecheck && pnpm test:rules && pnpm build"
   },
   "dependencies": {

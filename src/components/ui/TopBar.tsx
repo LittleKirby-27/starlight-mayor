@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Award, Cloud, CloudFog, CloudRain, Clock, DollarSign, Leaf, Monitor, Music2, Pause, Play, Smile, Sparkles, Sun, Volume2, VolumeX } from 'lucide-react';
+import { Award, Cloud, CloudFog, CloudRain, Clock, DollarSign, Leaf, Lightbulb, Monitor, Music2, Pause, Play, Smile, Sparkles, Sun, Volume2, VolumeX } from 'lucide-react';
 import { getAudioTheme } from '../../audio/audioThemes';
 import { useGameStore, WeatherType } from '../../store/gameStore';
 
@@ -20,6 +20,7 @@ const weatherLabels: Record<WeatherType, string> = {
 export function TopBar({ onOpenAchievements, onOpenAudioSettings }: { onOpenAchievements: () => void; onOpenAudioSettings: () => void }) {
   const money = useGameStore((state) => state.money);
   const environment = useGameStore((state) => state.environment);
+  const lightPollution = useGameStore((state) => state.lightPollution);
   const stars = useGameStore((state) => state.stars);
   const satisfaction = useGameStore((state) => state.satisfaction);
   const day = useGameStore((state) => state.day);
@@ -76,6 +77,7 @@ export function TopBar({ onOpenAchievements, onOpenAudioSettings }: { onOpenAchi
       </button>
 
       <Indicator icon={<DollarSign size={18} />} value={money} label="财政" color={money < 180 ? '#f87171' : '#facc15'} />
+      <Indicator icon={<Lightbulb size={18} />} value={lightPollution} max={100} label="光污染↓" color={lightPollution > 65 ? '#f87171' : lightPollution > 35 ? '#fbbf24' : '#67e8f9'} />
       <Indicator icon={<Leaf size={18} />} value={environment} max={100} label="环境" color={environment < 30 ? '#f87171' : '#4ade80'} />
       <Indicator icon={<Sparkles size={18} />} value={stars} max={100} label="星空" color="#facc15" glow={stars > 80} />
       <Indicator icon={<Smile size={18} />} value={satisfaction} max={100} label="满意度" color={satisfaction < 35 ? '#f87171' : '#f8fafc'} />

@@ -39,19 +39,19 @@ export function MainMenu({ onStartGame, onOpenFeedback, onOpenAudioSettings }: M
 
         <section className="grid flex-1 items-center gap-10 lg:grid-cols-[1.05fr_.95fr]">
           <div>
-            <p className="eyebrow">城市环保 · 3D 策略游戏</p>
+            <p className="eyebrow">光污染科普 · 3D 策略游戏</p>
             <h1 className="mt-4 max-w-3xl text-5xl font-black leading-[1.05] tracking-[-0.045em] sm:text-6xl xl:text-7xl">
               让城市亮起来，
               <span className="block bg-gradient-to-r from-cyan-100 via-blue-200 to-violet-300 bg-clip-text text-transparent">也让星空回来。</span>
             </h1>
             <p className="mt-6 max-w-2xl text-base leading-8 text-slate-300">
-              在财政、环境、星空与市民满意度之间做选择。每 30 秒推进一天，紧急事件会暂停主计时，完成目标后由你确认进入下一关。
+              巡查每座建筑的亮度、色温、向上光和照明时段，用遮光、暖色灯、定时熄灯与智能调光让星空真正回来。每关还需完成一项高难度城市委托。
             </p>
 
             <div className="mt-8 grid max-w-2xl gap-3 sm:grid-cols-3">
-              <Feature icon={<Clock3 size={18} />} title="限时决策" text="约 5 分钟高压关卡" />
-              <Feature icon={<ShieldCheck size={18} />} title="可靠判定" text="目标逐项校验" />
-              <Feature icon={<Sparkles size={18} />} title="动态银河" text="星空随治理恢复" />
+              <Feature icon={<Clock3 size={18} />} title="夜间巡查" text="找出真实漏光源" />
+              <Feature icon={<ShieldCheck size={18} />} title="科学控光" text="方向 · 色温 · 时段" />
+              <Feature icon={<Sparkles size={18} />} title="动态银河" text="污染越低，星空越亮" />
             </div>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">

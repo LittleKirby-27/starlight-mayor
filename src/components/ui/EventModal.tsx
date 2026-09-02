@@ -1,62 +1,73 @@
-import { useEffect, useState } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, Lightbulb, Sparkles } from 'lucide-react';
 import { useGameStore } from '../../store/gameStore';
 import { EVENT_RESPONSE_SECONDS } from '../../game/rules';
 import { shouldTriggerEvent } from '../../game/events';
 
-interface EventData {
-  title: string;
-  desc: string;
-  options: {
-    text: string;
-    effect: { money?: number; environment?: number; stars?: number; satisfaction?: number };
-  }[];
+interface EventEffect {
+  money?: number;
+  environment?: number;
+  lightPollution?: number;
+  satisfaction?: number;
 }
 
-const RANDOM_EVENTS: EventData[] = [
+interface EventOption {
+  text: string;
+  effect: EventEffect;
+  maxLightPollution?: number;
+}
+
+interface EventData {
+  id: string;
+  title: string;
+  desc: string;
+  lesson: string;
+  options: EventOption[];
+}
+
+const EVENTS: EventData[] = [
   {
-    title: '开发商提议',
-    desc: '开发商想拆掉城郊树林，建设一片大型商业街区，承诺立刻增加财政收入。',
+    id: 'grid_overload',
+    title: '电网过载',
+    desc: '晚高峰照明负荷突破警戒线。工程师提醒：扩大发电能力并不能解决过度照明本身。',
+    lesson: '按需调光既能降低电力压力，也能减少不必要的天空辉光。',
     options: [
-      { text: '批准开发：财政 +220，环境 -16，星空 -12', effect: { money: 220, environment: -16, stars: -12 } },
-      { text: '保留树林：环境 +8，满意度 +6', effect: { environment: 8, satisfaction: 6 } },
-      { text: '改为生态夜市：财政 +80，星空 -4，满意度 +8', effect: { money: 80, stars: -4, satisfaction: 8 } },
+      { text: '启动分区智能调光：财政 -120，光污染 -8，满意度 +4', effect: { money: -120, lightPollution: -8, satisfaction: 4 } },
+      { text: '临时扩容保亮度：财政 -220，环境 -4，满意度 +7', effect: { money: -220, environment: -4, satisfaction: 7 } },
+      { text: '直接关闭景观灯：财政 +40，光污染 -12，满意度 -9', effect: { money: 40, lightPollution: -12, satisfaction: -9 } },
     ],
   },
   {
-    title: '市民夜间出行投诉',
-    desc: '部分居民认为控光后夜路变暗，希望政府给出更细致的照明方案。',
+    id: 'meteor_watch',
+    title: '流星雨观测窗口',
+    desc: '天文台确认今晚有流星雨。城市能否获得观星旅游与科研合作收入，取决于当前夜空质量。',
+    lesson: '提前治理光污染会在特殊天象到来时带来公共与经济回报。',
     options: [
-      { text: '增加普通照明：满意度 +14，星空 -18', effect: { satisfaction: 14, stars: -18 } },
-      { text: '安装低眩光路灯：财政 -120，星空 +8，满意度 +6', effect: { money: -120, stars: 8, satisfaction: 6 } },
-      { text: '维持现状并解释：满意度 -6，星空 +4', effect: { satisfaction: -6, stars: 4 } },
+      { text: '开放国际观测区：财政 +320，满意度 +8（需光污染 ≤35）', effect: { money: 320, satisfaction: 8 }, maxLightPollution: 35 },
+      { text: '紧急全城调暗：财政 +180，光污染 -8，满意度 -2（需光污染 ≤50）', effect: { money: 180, lightPollution: -8, satisfaction: -2 }, maxLightPollution: 50 },
+      { text: '接受商业灯光赞助：财政 +260，光污染 +6，满意度 +4', effect: { money: 260, lightPollution: 6, satisfaction: 4 } },
     ],
   },
   {
-    title: '雾霾预警',
-    desc: '连续施工和工业排放让空气透明度下降，今晚的星空观测活动可能取消。',
+    id: 'billboard_complaint',
+    title: '住宅窗外的巨型招牌',
+    desc: '居民提交照片：商业招牌的冷白光整夜照进卧室。企业希望继续保持最高亮度。',
+    lesson: '降低亮度、控制时段和遮挡方向，比简单拆除照明更能兼顾双方。',
     options: [
-      { text: '临时停工：财政 -160，环境 +16，星空 +8', effect: { money: -160, environment: 16, stars: 8 } },
-      { text: '继续生产：财政 +180，环境 -18，满意度 -8', effect: { money: 180, environment: -18, satisfaction: -8 } },
-      { text: '启动公共交通补贴：财政 -80，环境 +8，满意度 +5', effect: { money: -80, environment: 8, satisfaction: 5 } },
+      { text: '限时并降低亮度：财政 -60，光污染 -7，满意度 +7', effect: { money: -60, lightPollution: -7, satisfaction: 7 } },
+      { text: '仅安装遮光板：财政 -90，光污染 -5，满意度 +5', effect: { money: -90, lightPollution: -5, satisfaction: 5 } },
+      { text: '维持营业优先：财政 +150，光污染 +5，满意度 -7', effect: { money: 150, lightPollution: 5, satisfaction: -7 } },
     ],
   },
   {
-    title: '星空音乐会邀请',
-    desc: '青少年乐团想在公园举办一场星空下的小提琴音乐会，为控光行动争取支持。',
+    id: 'safety_review',
+    title: '夜间安全评估',
+    desc: '市民担心控光会让道路变暗。照明专家建议把光准确投向路面，而不是提高所有灯具亮度。',
+    lesson: '良好照明关注方向、均匀度和眩光控制，不等于越亮越安全。',
     options: [
-      { text: '支持活动：财政 -100，满意度 +16，星空 +6', effect: { money: -100, satisfaction: 16, stars: 6 } },
-      { text: '缩小规模：财政 -40，满意度 +7，星空 +3', effect: { money: -40, satisfaction: 7, stars: 3 } },
-      { text: '暂缓活动：满意度 -5', effect: { satisfaction: -5 } },
-    ],
-  },
-  {
-    title: '能源缺口',
-    desc: '晚高峰用电上升，商业区要求延长灯光营业时间。',
-    options: [
-      { text: '延长营业：财政 +160，星空 -14，环境 -6', effect: { money: 160, stars: -14, environment: -6 } },
-      { text: '限时营业：财政 +60，满意度 -4，星空 +4', effect: { money: 60, satisfaction: -4, stars: 4 } },
-      { text: '补贴清洁能源：财政 -140，环境 +12，星空 +10', effect: { money: -140, environment: 12, stars: 10 } },
+      { text: '改造为低眩光路灯：财政 -130，光污染 -6，满意度 +8', effect: { money: -130, lightPollution: -6, satisfaction: 8 } },
+      { text: '增加普通高亮灯：财政 -70，光污染 +7，满意度 +4', effect: { money: -70, lightPollution: 7, satisfaction: 4 } },
+      { text: '先做小范围试点：财政 -50，光污染 -3，满意度 +3', effect: { money: -50, lightPollution: -3, satisfaction: 3 } },
     ],
   },
 ];
@@ -64,6 +75,8 @@ const RANDOM_EVENTS: EventData[] = [
 export function EventModal() {
   const day = useGameStore((state) => state.day);
   const currentLevel = useGameStore((state) => state.currentLevel);
+  const lightPollution = useGameStore((state) => state.lightPollution);
+  const activeChallengeId = useGameStore((state) => state.activeChallengeId);
   const applyEventResult = useGameStore((state) => state.applyEventResult);
   const eventDays = useGameStore((state) => state.eventDays);
   const addEventDay = useGameStore((state) => state.addEventDay);
@@ -71,59 +84,62 @@ export function EventModal() {
   const [currentEvent, setCurrentEvent] = useState<EventData | null>(null);
   const [timeLeft, setTimeLeft] = useState(EVENT_RESPONSE_SECONDS);
 
+  const availableOptions = useMemo(() => currentEvent?.options.filter((option) => option.maxLightPollution === undefined || lightPollution <= option.maxLightPollution) ?? [], [currentEvent, lightPollution]);
+
   useEffect(() => {
-    if (currentEvent) return;
+    if (currentEvent || !activeChallengeId) return;
     if (shouldTriggerEvent({ day, currentLevel, eventDays, randomRoll: Math.random() })) {
-      const event = RANDOM_EVENTS[Math.floor(Math.random() * RANDOM_EVENTS.length)];
+      const event = EVENTS[Math.floor(Math.random() * EVENTS.length)];
       setCurrentEvent(event);
       setTimeLeft(EVENT_RESPONSE_SECONDS);
       addEventDay(day);
       setPaused(true);
     }
-  }, [addEventDay, currentEvent, currentLevel, day, eventDays, setPaused]);
+  }, [activeChallengeId, addEventDay, currentEvent, currentLevel, day, eventDays, setPaused]);
 
   useEffect(() => {
     if (!currentEvent) return;
     if (timeLeft <= 0) {
-      applyEventResult(currentEvent.options[0].effect);
+      const fallback = availableOptions[0] ?? currentEvent.options[currentEvent.options.length - 1];
+      applyEventResult(fallback.effect);
       setCurrentEvent(null);
       setPaused(false);
       return;
     }
-    const timer = window.setInterval(() => {
-      setTimeLeft((value) => value - 1);
-    }, 1000);
+    const timer = window.setInterval(() => setTimeLeft((value) => value - 1), 1000);
     return () => window.clearInterval(timer);
-  }, [applyEventResult, currentEvent, setPaused, timeLeft]);
+  }, [applyEventResult, availableOptions, currentEvent, setPaused, timeLeft]);
 
   if (!currentEvent) return null;
 
   return (
-    <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/65 p-6 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-sm border border-white/20 bg-[#111827] p-6 text-white shadow-2xl">
+    <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-lg rounded-2xl border border-white/20 bg-[#0b1728] p-5 text-white shadow-2xl sm:p-6">
         <div className="mb-4 flex items-center justify-between border-b border-white/10 pb-3">
-          <h2 className="flex items-center text-xl font-bold text-amber-300">
-            <AlertTriangle className="mr-2" size={22} />
-            紧急政策
-          </h2>
-          <span className={`font-mono text-sm ${timeLeft <= 8 ? 'text-red-300 animate-pulse' : 'text-slate-300'}`}>{timeLeft}s</span>
+          <h2 className="flex items-center text-xl font-bold text-amber-300"><AlertTriangle className="mr-2" size={22} />紧急政策</h2>
+          <span className={`font-mono text-sm ${timeLeft <= 8 ? 'animate-pulse text-red-300' : 'text-slate-300'}`}>{timeLeft}s</span>
         </div>
-        <h3 className="mb-2 text-lg font-bold">{currentEvent.title}</h3>
-        <p className="mb-6 text-sm leading-relaxed text-slate-300">{currentEvent.desc}</p>
+        <div className="mb-2 flex items-center gap-2"><Sparkles size={17} className="text-cyan-200" /><h3 className="text-lg font-bold">{currentEvent.title}</h3></div>
+        <p className="mb-3 text-sm leading-relaxed text-slate-300">{currentEvent.desc}</p>
+        <div className="mb-5 flex gap-2 rounded-xl border border-cyan-200/10 bg-cyan-200/[0.045] p-3 text-xs leading-relaxed text-cyan-100"><Lightbulb size={16} className="mt-0.5 shrink-0" /><span>{currentEvent.lesson}</span></div>
         <div className="space-y-3">
-          {currentEvent.options.map((option) => (
-            <button
-              key={option.text}
-              className="w-full rounded-sm border border-white/15 p-3 text-left text-sm transition-all hover:border-amber-300 hover:bg-white/5"
-              onClick={() => {
-                applyEventResult(option.effect);
-                setCurrentEvent(null);
-                setPaused(false);
-              }}
-            >
-              {option.text}
-            </button>
-          ))}
+          {currentEvent.options.map((option) => {
+            const locked = option.maxLightPollution !== undefined && lightPollution > option.maxLightPollution;
+            return (
+              <button
+                key={option.text}
+                disabled={locked}
+                className="w-full rounded-xl border border-white/15 p-3 text-left text-sm transition-all hover:border-amber-300 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-35"
+                onClick={() => {
+                  applyEventResult(option.effect);
+                  setCurrentEvent(null);
+                  setPaused(false);
+                }}
+              >
+                {option.text}{locked && <span className="mt-1 block text-[10px] text-red-200">当前光污染 {lightPollution}，尚未达到条件</span>}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

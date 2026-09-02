@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
+import { Html } from '@react-three/drei';
 import { useGameStore, BuildingType } from '../../store/gameStore';
+import { getBuildingLightImpact, LIGHTING_PROFILES, type CitizenFeedbackCandidate, type RetrofitType } from '../../game/lighting';
 import * as THREE from 'three';
 
 // Building Colors
@@ -220,11 +222,26 @@ function CivicSiteDetails({ accent, isNight }: { accent: string; isNight: boolea
   );
 }
 
-export function Building({ type, position }: { type: BuildingType, position: [number, number, number] }) {
+interface BuildingProps {
+  id: string;
+  type: BuildingType;
+  position: [number, number, number];
+  retrofits: RetrofitType[];
+  auditMode?: boolean;
+  selected?: boolean;
+  bubble?: CitizenFeedbackCandidate | null;
+  bubbleExpanded?: boolean;
+  onSelect?: () => void;
+  onBubbleClick?: () => void;
+}
+
+export function Building({ id, type, position, retrofits, auditMode = false, selected = false, bubble = null, bubbleExpanded = false, onSelect, onBubbleClick }: BuildingProps) {
   const isNight = useGameStore(state => state.isNight);
   const colors = BUILDING_COLORS[type];
   const geo = BUILDING_GEOMETRY[type];
   const gl = useThree((state) => state.gl);
+  const lightImpact = useMemo(() => getBuildingLightImpact({ id, type, x: position[0], z: position[2], retrofits }), [id, position, retrofits, type]);
+  const lightingVisualFactor = Math.max(0.18, lightImpact / LIGHTING_PROFILES[type].baseImpact);
   
   const windBladeRef = useRef<THREE.Group>(null);
   const rotationY = useMemo(() => {
@@ -258,15 +275,24 @@ export function Building({ type, position }: { type: BuildingType, position: [nu
       map: tex.map,
       emissive: new THREE.Color(0xffffff),
       emissiveMap: tex.emissiveMap,
-      emissiveIntensity: isNight ? 1.0 : 0
+      emissiveIntensity: isNight ? lightingVisualFactor : 0
   } : {
       color: colors.body,
       emissive: emissiveColor,
-      emissiveIntensity: isNight ? 0.5 : 0
+      emissiveIntensity: isNight ? 0.5 * lightingVisualFactor : 0
   };
 
   return (
-    <group position={position} rotation={[0, rotationY, 0]} scale={1.34}>
+    <group
+      position={position}
+      rotation={[0, rotationY, 0]}
+      scale={1.34}
+      onClick={(event) => {
+        if (!auditMode) return;
+        event.stopPropagation();
+        onSelect?.();
+      }}
+    >
       {type !== 'park' && type !== 'wind' && type !== 'solar' && type !== 'subway' && (
         <mesh position={[0, 0.06, 0]} receiveShadow>
           <boxGeometry args={[1.55, 0.12, 1.55]} />
@@ -795,6 +821,34 @@ export function Building({ type, position }: { type: BuildingType, position: [nu
                   <meshStandardMaterial color="#81583b" roughness={0.9} />
               </mesh>
           </group>
+      )}
+
+      {auditMode && (
+        <group>
+          <mesh position={[0, 0.1, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[0.78, selected ? 0.98 : 0.9, 32]} />
+            <meshBasicMaterial color={selected ? '#ffffff' : lightImpact >= 10 ? '#ff667a' : lightImpact >= 5 ? '#ffc857' : '#67e8f9'} transparent opacity={selected ? 0.95 : 0.62} depthWrite={false} />
+          </mesh>
+          <mesh position={[0, geo.bodyHeight + Math.max(1.3, lightImpact * 0.13), 0]}>
+            <coneGeometry args={[Math.min(0.75, 0.18 + lightImpact * 0.025), Math.max(2.2, lightImpact * 0.26), 18, 1, true]} />
+            <meshBasicMaterial color={lightImpact >= 10 ? '#ff667a' : lightImpact >= 5 ? '#ffc857' : '#67e8f9'} transparent opacity={0.2} depthWrite={false} side={THREE.DoubleSide} blending={THREE.AdditiveBlending} />
+          </mesh>
+        </group>
+      )}
+
+      {bubble && (
+        <Html position={[0, Math.max(2.4, geo.bodyHeight + 1.7), 0]} center zIndexRange={[38, 30]}>
+          <button
+            className={`citizen-bubble ${bubble.tone} ${bubbleExpanded ? 'expanded' : ''}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              onBubbleClick?.();
+            }}
+            aria-label={bubbleExpanded ? bubble.text : '查看市民心声'}
+          >
+            {bubbleExpanded ? <><span>{bubble.text}</span><small>{bubble.reason}</small></> : <span aria-hidden="true">💬</span>}
+          </button>
+        </Html>
       )}
     </group>
   );

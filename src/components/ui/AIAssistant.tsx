@@ -21,10 +21,11 @@ export function AIAssistant() {
   const localAdvice = () => {
     const tips: string[] = [];
     if (state.money < 250) tips.push('财政偏紧，先补一两个商业区或选择能增加收入的事件选项。');
-    if (state.environment < 50) tips.push('环境压力较大，优先公园、风电、垃圾分类或碳排放预算。');
-    if (state.stars < (level?.targetStars ?? 60)) tips.push('星空不足，LED 路灯、控制夜间照明和关灯一小时收益最快。');
-    if (state.satisfaction < 45) tips.push('满意度偏低，可以补医院、学校、公园，避免连续发布牺牲满意度的政策。');
-    if (tips.length === 0) tips.push('当前状态比较稳，围绕本关硬性目标补建筑数量即可。');
+    if (state.auditedBuildingIds.length < 3) tips.push('先进入巡查页，点击地图上较高的红色或黄色光柱，登记主要污染源。');
+    if (state.lightPollution > 50) tips.push('光污染偏高，优先改造商业中心、体育场和商业区；遮光灯罩通常是第一步。');
+    if (state.residentialComplaints > 0) tips.push('住宅正在受到邻近灯光干扰，检查住宅附近的招牌、工业或泛光灯并加装遮光。');
+    if (state.stars < (level?.targetStars ?? 60)) tips.push('星空由光污染反向决定。暖色灯、定时熄灯和智能调光必须按建筑情况组合使用。');
+    if (tips.length === 0) tips.push('当前夜空治理较稳，继续核对本关照明改造类型与高难度委托条件。');
     return tips.slice(0, 3).join('\n');
   };
 
@@ -41,8 +42,11 @@ export function AIAssistant() {
 目标：${level?.desc}
 财政：${state.money}
 环境：${state.environment}/100
+光污染：${state.lightPollution}/100（越低越好）
 星空：${state.stars}/100
 满意度：${state.satisfaction}/100
+住宅干扰：${state.residentialComplaints} 条
+已巡查建筑：${state.auditedBuildingIds.length}
 剩余时间：${state.timeLeft} 秒
 已发布政策：${state.activePolicies.map((id) => POLICY_CONFIG[id]?.name ?? id).join('、') || '无'}
 建筑总数：${state.buildings.length}
@@ -57,7 +61,7 @@ export function AIAssistant() {
           model: 'MiniMax-M3',
           thinking: { type: 'disabled' },
           messages: [
-            { role: 'system', content: '你是《星光市长：重建夜空》游戏中的市政与环保顾问。' },
+            { role: 'system', content: '你是《星光市长：重建夜空》的光污染治理顾问。优先解释遮光方向、亮度、色温与照明时段，不要把普通绿化误说成会直接降低光污染。' },
             { role: 'user', content: contextMessage },
           ],
           max_completion_tokens: 200,

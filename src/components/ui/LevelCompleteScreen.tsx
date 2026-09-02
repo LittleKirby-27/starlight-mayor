@@ -42,7 +42,7 @@ export function LevelCompleteScreen({ onOpenFeedback }: { onOpenFeedback: () => 
               <p className="mt-1 font-bold">{nextLevel?.name}</p>
             </div>
             <div className="text-right">
-              <p className="text-xs text-slate-500">建设奖励</p>
+              <p className="text-xs text-slate-500">暗夜治理奖励</p>
               <p className="mt-1 font-mono font-bold text-amber-200">+{reward}</p>
             </div>
           </div>
